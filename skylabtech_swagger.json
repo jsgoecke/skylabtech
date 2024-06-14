@@ -1,0 +1,2031 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "version": "1.0.0",
+    "title": "Skylab Technologies studio API Documentation",
+    "description": "The Skylab Studio API provides a RESTful interface to much of the data in the system.\nIt is used by our official libraries to generate jobs,\nadding photos, and monitor progress. If the API is missing something you'd\nlike to see, please let us know.\n\n# Privacy Policy\n[Privacy Policy](https://studio-readme.skylabtech.ai/docs/privacy-policy)\n\n# Terms of Service\n[Terms of Service](https://studio-readme.skylabtech.ai/docs/terms-of-service)\n\n# Version\n\nThe Skylab Studio API is versioned in the endpoint path. For example, to use version\n\"v1\" and get all jobs for your account, you would perform a request to the endpoint\n`GET /api/public/v1/jobs`. Current v1 is the only version offered.\n\n# Authentication\n\nAuthentication is done via API Access Token included as a request header.\n\n```bash\n  curl --header \"X-SLT-API-KEY: 123abc\" https://studio.skylabtech.ai/api/public/v1/jobs\n```\n\n## API Access Tokens\n\nAll operations require an API Access Token. You can find and administer your\nAPI Access Tokens in Settings -> Advanced -> API Access Tokens.\n\nNew projects are created with a default token.\n\n## HMAC Authentication (job callback url PATCH request)\nIn order to use fully utilize this feature, you will need to contact us at [info@skylabtech.ai](mailto:info@skylatech.ai) to obtain a secret key for your account.\n\nThere are two authorization header keys:\n\n`X-Skylab-Signature: <signature>`\n`X-Skylab-Timestamp: <request_timestamp>`\n\nThe payload that will be used to generate the signature is `<request_timestamp>:<job_json_data>`\n\n`(i.e.) Mon, 28 Aug 2023 22:58:28 GMT:{\"accountId\":6,\"id\":7612,\"name\":\"gfesheshrs\",\"profileId\":3750,\"state\":\"complete\"...}`.\n\nThe signature is a base 64 encoded digest of the HMAC SHA256 hash of the callback PATCH request body (in the above format) with the provided secret key.\n\nIt is your responsibility to conduct the above steps on the server side to generate a signature as per above to validate the authenticity of the signature within the authorization header in PATCH request. If you are using one of our SDKs, there will be an HMAC signature comparison function available to you.\n\nSteps to reproduce the above signature:\n\n1. Get the request timestamp from the `X-Skylab-Timestamp` header value.\n2. Create the payload string as per the above format using the request timestamp and the callback PATCH request body joined by a `:` with no spaces in between.\n3. Generate an HMAC SHA256 hash of the payload string with the provided secret key.\n4. Base 64 encode the hash generated in step 4.\n5. Compare the base 64 encoded hash generated in step 5 with the signature to the `X-Skylab-Signature` header value in the callback PATCH request.\n\n## Whitelist IPs\n\nYour clients' IP addresses need to be added to your account's whitelisted IPs list.\nYou can do so in Settings -> Advanced -> Whitelisted IPs\n\n# HTTP responses\n\nThe API can return the following HTTP response codes:\n\n| Code | Type                | Description |b\n|-----|----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|\n| 200 | OK                   | Operation was completed successfully                                                                                                                                                                                         |\n| 201 | Created              | The request has been fulfilled, resulting in the creation of a new resource                                                                                                                                                  |\n| 400 | Bad Request          | The request was malformed and could not be parsed.                                                                                                                                                                           |\n| 401 | Unauthorized         | API Access token was missing or invalid.                                                                                                                                                                                         |\n| 403 | Access Denied/Forbidden | API Access token does not have the necessary permissions.                                                                                                                                                                        |\n| 404 | Not Found            | The requested resource was not found. This response will be returned if the URL is entirely invalid (i.e. /asdf), or if it is a URL that could be valid but is referencing something that does not exist (i.e. /jobs/12345). |\n| 422 | Unprocessable Entity | The request was parseable (i.e. valid JSON), but some parameters were missing or otherwise invalid.                                                                                                                          |\n| 429 | Too Many Requests    | If rate limiting is enabled for your API Access Token, this return code signifies that the rate limit has been reached and the item was not processed.                                                                           |\n\n# Rate Limiting\n\n- API usage is throttled to 10,000 requests per minute for all API Access Tokens.\n- We are subject to AWS S3 soft rate limiting. We recommend making making no more than 50 concurrent requests per second to our [photo upload url endpoint](http://studio-docs.skylabtech.ai/#operation/photoUploadUrl \"Photo Upload URL\")\n\n# Software Development Kits (SDKs)\nOur SDKs allow you to more easily integrate the Studio API into your application.\n\nThey handle the authentication process for you, and provide a convenient interface for making requests and parsing responses.\n\nIn particular, the job photo upload process is simplified down to be done within a single function/method.\n\n[<img src='https://s3.dualstack.us-east-2.amazonaws.com/pythondotorg-assets/media/community/logos/python-logo-only.png' alt='Python' height='20'/> Python](https://pypi.org/project/skylab-studio/)\n\n[<img src='https://github.com/dotnet/brand/blob/main/logo/dotnet-logo.jpg?raw=true' alt='.NET' height='20'> .NET](https://www.nuget.org/packages/SkylabStudio/)\n\n# Important Notes\n## Job Processing Notes\n### Regular Job Processing (2 ways: DIRECT (recommended) or CACHE (legacy - not recommended))\n\n#### SDK Upload Process (Recommended)\n1. [Create a regular job](http://studio-docs.skylabtech.ai/#operation/createJob \"Create Job\") (ensure that job type field is set to `regular`)\n2. Create photo(s) by calling respective SDK's `upload_photo` method which will handle creating a photo and uploading it to s3. Failure to upload will destroy the created photo object.\n3. [Queue the regular job](http://studio-docs.skylabtech.ai/#operation/queueJob \"Queue Job\") For more information regarding the callback process, please see the Job Queueing and Callback Process section below.\n4. Download the output images by parsing `photo_download_urls` from the [Update job callback url](http://studio-docs.skylabtech.ai/#operation/updateJobCallbackUrl \"Update Job Callback URL\") response\n\n#### Direct Store Upload Process (Recommended)\n1. [Create a regular job](http://studio-docs.skylabtech.ai/#operation/createJob \"Create Job\") (ensure that job type field is set to `regular`)\n2. [Create a photo](http://studio-docs.skylabtech.ai/#operation/createPhoto \"Create Photo\") (only the `job_id` and `name` fields are required)\n3. [Obtain a Photo Upload URL](http://studio-docs.skylabtech.ai/#operation/photoUploadUrl \"Photo Upload URL\") via the `photos/upload_url` endpoint. (`photo_id` is required and set `use_cache_upload` to `false`)\n4. Make a `PUT` request to the upload url by __directly attaching your image as binary to the request__\n5. [Queue the regular job](http://studio-docs.skylabtech.ai/#operation/queueJob \"Queue Job\") For more information regarding the callback process, please see the Job Queueing and Callback Process section below.\n6. Download the output images by parsing `photo_download_urls` from the [Update job callback url](http://studio-docs.skylabtech.ai/#operation/updateJobCallbackUrl \"Update Job Callback URL\") response\n\n#### Cache Photo Upload Process (Legacy - Not recommended)\n1. [Create a regular job](http://studio-docs.skylabtech.ai/#operation/createJob \"Create Job\") (ensure that job type field is set to `regular`)\n2. [Obtain a Photo Upload URL](http://studio-docs.skylabtech.ai/#operation/photoUploadUrl \"Photo Upload URL\") `photos/upload_url` (`type` is required, will default to `jpg` if not provided)\n3. Make a `PUT` request to the upload url by __directly attaching your image as binary to the request__\n4. [Create a photo](http://studio-docs.skylabtech.ai/#operation/createPhoto \"Create Photo\") with the key value obtained from the [photo upload url endpoint](http://studio-docs.skylabtech.ai/#operation/photoUploadUrl \"Photo Upload URL\") in step 1\n5. [Queue the regular job](http://studio-docs.skylabtech.ai/#operation/queueJob \"Queue Job\") For more information regarding the callback process, please see the Job Queueing and Callback Process section below.\n6. Download the output images by parsing `photo_download_urls` from the [Update job callback url](http://studio-docs.skylabtech.ai/#operation/updateJobCallbackUrl \"Update Job Callback URL\") response\n\n### Job Process Error Handling\n- If a job fails to process or there is one or more photos missing (upload not successful), the job will be put into `error` and the `errors` field will be populated with the error message in a string array format.\n- __For optimal job processing performance, batch jobs 40 photos or under per job if possible.__\n\n### Job Queueing and Callback Process\nWhen you queue a job, we run an automated process to check that every photo has been successfully uploaded to our cloud storage. (you can bypass this automated checker process by passing in `skip_photo_validation: true` in your [queue job request](http://studio-docs.skylabtech.ai/#operation/queueJob \"Queue Job\"). Upon successful validation, the job will be queued and the `state` field will be set to `queued`. If there are any missing photos, the job will be put into `error` and the `errors` field will be populated with the error message in a string array format.\nIf you include a `callback_url` in your [queue job](http://studio-docs.skylabtech.ai/#operation/queueJob \"Queue Job\") post request, we will make a `PATCH` request with the [callback url response](http://studio-docs.skylabtech.ai/#operation/updateJobCallbackUrl \"Update Job Callback URL\") whenever the job is officially `queued`, `complete` or `error`.\n\n### Training Job Processing\n1. [Create a training job](http://studio-docs.skylabtech.ai/#operation/createJob \"Create Job\") (ensure that job type field is set to `training`)\n2. Create photo(s) by calling respective SDK's `upload_photo` method which will handle creating a photo and uploading it to s3. Failure to upload will destroy the photo object created.\n3. [Queue the training job](http://studio-docs.skylabtech.ai/#operation/queueJob \"Queue Job\") For more information regarding the callback process, please see the Job Queueing and Callback Process section below.\n4. Wait for the custom preset to be trained. A Skylab representative will be in contact with additional information in 5-7 business days.\n\n## Profile Creation Notes\n### Profile Background Photo\n1. [Create a profile](http://studio-docs.skylabtech.ai/#operation/createProfile \"Create Profile\") (ensure both the `enable_extract` and `replace_background` fields are set to `true`)\n2. Follow the profile background photo upload process below (ensure that a `profile_id` is provided when creating the photo object)\n\n## Image Constraints\n- Image size cannot exceed 27 MB\n- Image resolution cannot exceed 27 MP\n- Neither the image height nor width can be greater than 6500 pixels\n- Image format must be JPG/PNG\n- Image file extension must be one of `.jpg`, `.jpeg`, `.png`\n- Image color space must be RGB for JPGs and RGB/RGBA for PNGs (RGBA is not accepted for extraction jobs, please see the next section)\n\n## Extraction Job Notes\nExtraction jobs (in addition to above):\n- Do NOT upload PNGs images with color space RBGA. These will NOT be extracted.\n\n### Extraction Output File Types compatibilities\n- JPG - can be outputted only when `replace_background`` is enabled\n- PNG - the default output file type for extraction jobs\n- PSD - can be outputted only when `remove_spill` is disabled\n- DP2 JPG - can be outputted only when `enable_crop` and `replace_background` are disabled\n\n### Limitations\nThis API provides access to almost all of our features, but there are some limitations:\n- **All PNG input images and extraction job output images will output a PNG image which is labeled as a JPG image.**. Please take care to rename the file extension to `.png` when downloading the image.\n- The **dual file output and replace background extraction options are not available via this API**.\n\n## Glare Job Notes\n1. Glare (set `enable_glare` to `true`) This will charge a glare flat rate for glare removal on every image.\n2. Glare Combo (set `enable_glare` and `enable_glare_combo` to `true`) This will run a glare detector process on every image. A fee will be charged when glare is detected and removed and nothing will be charged when no glare is detected.\n\n## Retouching Job Notes\nThere are 4 different combinations of retouching avaialble:\n1. Retouch (set `enable_retouch` to `true`)\n2. Retouch Full Body (set `enable_retouch` and `enable_retouch_full_body` to `true`)\n3. Enhanced Retouch (set `enable_retouch` and `enable_retouch` to `true`)\n4. Enhanced Retouch Full Body (set `enable_retouch`, `enable_enhanced_retouch` and `enable_retouch_full_body` to `true`)\n\n",
+    "contact": {
+      "name": "Skylab Technologies",
+      "email": "support@skylabtech.ai",
+      "url": "https://studio.skylabtech.ai"
+    },
+    "license": {
+      "name": "Apache 2.0",
+      "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
+    },
+    "x-logo": {
+      "url": "https://skylab-static.s3.ca-central-1.amazonaws.com/logos/studio-dark-stacked.png",
+      "backgroundColor": "#FFFFFF"
+    }
+  },
+  "host": "studio.skylabtech.ai",
+  "basePath": "/api/public/v1",
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "securityDefinitions": {
+    "api_key": {
+      "type": "apiKey",
+      "name": "X-SLT-API-KEY",
+      "in": "header"
+    }
+  },
+  "security": [
+    {
+      "api_key": [
+
+      ]
+    }
+  ],
+  "parameters": {
+    "page": {
+      "name": "page",
+      "in": "query",
+      "description": "The page which to fetch results of",
+      "required": false,
+      "type": "integer",
+      "format": "int32",
+      "default": 1
+    }
+  },
+  "paths": {
+    "/jobs": {
+      "get": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Job"
+              }
+            }
+          }
+        },
+        "summary": "List all jobs",
+        "description": "Returns all jobs",
+        "operationId": "listJobs",
+        "produces": [
+          "application/json"
+        ],
+        "tags": [
+          "job"
+        ],
+        "security": [
+          {
+            "api_key": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/parameters/page"
+          }
+        ]
+      },
+      "post": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "422": {
+            "description": "unprocessible entity",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "201": {
+            "description": "created",
+            "schema": {
+              "$ref": "#/definitions/Job"
+            }
+          }
+        },
+        "summary": "Create a job",
+        "description": "Creates a job",
+        "operationId": "createJob",
+        "produces": [
+          "application/json"
+        ],
+        "tags": [
+          "job"
+        ],
+        "security": [
+          {
+            "api_key": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "job",
+            "in": "body",
+            "description": "Job to create",
+            "schema": {
+              "$ref": "#/definitions/JobParams"
+            }
+          }
+        ]
+      }
+    },
+    "/jobs/{id}": {
+      "get": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "404": {
+            "description": "not found",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "$ref": "#/definitions/Job"
+            }
+          }
+        },
+        "summary": "Find job by ID",
+        "description": "Returns a single job",
+        "operationId": "getJobById",
+        "tags": [
+          "job"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID of job to fetch",
+            "required": true,
+            "type": "integer",
+            "format": "int64"
+          }
+        ]
+      },
+      "patch": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "404": {
+            "description": "not found",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "422": {
+            "description": "unprocessible entity",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "$ref": "#/definitions/Job"
+            }
+          }
+        },
+        "summary": "Update job by ID",
+        "description": "Updates a job",
+        "operationId": "updateJobById",
+        "tags": [
+          "job"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID of job to update",
+            "required": true,
+            "type": "integer",
+            "format": "int64"
+          },
+          {
+            "name": "job",
+            "in": "body",
+            "description": "Job to update",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/JobParams"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "404": {
+            "description": "not found",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "422": {
+            "description": "unprocessible entity",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "$ref": "#/definitions/Job"
+            }
+          }
+        },
+        "summary": "Delete job by ID",
+        "description": "Deletes a job",
+        "operationId": "deleteJobById",
+        "tags": [
+          "job"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID of job to delete",
+            "required": true,
+            "type": "integer",
+            "format": "int64"
+          }
+        ]
+      }
+    },
+    "/jobs/{id}/queue": {
+      "post": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "404": {
+            "description": "not found",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "$ref": "#/definitions/Job"
+            }
+          }
+        },
+        "summary": "Queues a job",
+        "description": "Queues a job for processing",
+        "operationId": "queueJob",
+        "produces": [
+          "application/json"
+        ],
+        "tags": [
+          "job"
+        ],
+        "security": [
+          {
+            "api_key": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID of job to queue for processing",
+            "required": true,
+            "type": "integer",
+            "format": "int64"
+          },
+          {
+            "name": "job",
+            "in": "body",
+            "schema": {
+              "properties": {
+                "callback_url": {
+                  "description": "Specify the callback url for us to report when job is finished",
+                  "type": "uri",
+                  "required": false,
+                  "example": "https://example.com/callback"
+                },
+                "skip_photo_validation": {
+                  "description": "Skips the integrated checker process that checks if all photos have been uploaded to S3. Please note: if this is set to true, we will not be conducting any checks on the photos. It defaults to false when the skip_photo_validation parameter is omitted.",
+                  "type": "boolean",
+                  "default": false,
+                  "required": false,
+                  "example": false
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "/jobs/{id}/cancel": {
+      "post": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "404": {
+            "description": "not found",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "$ref": "#/definitions/Job"
+            }
+          }
+        },
+        "summary": "Cancels a job",
+        "description": "Cancel a job (moves the job state from queued/processing back to pending)",
+        "operationId": "cancelJob",
+        "produces": [
+          "application/json"
+        ],
+        "tags": [
+          "job"
+        ],
+        "security": [
+          {
+            "api_key": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID of job to cancel",
+            "required": true,
+            "type": "integer",
+            "format": "int64"
+          }
+        ]
+      }
+    },
+    "/jobs/{id}/jobs_in_front": {
+      "get": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "404": {
+            "description": "not found",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "$ref": "#/definitions/JobsInFront"
+            }
+          }
+        },
+        "summary": "Jobs in front",
+        "description": "Find a job's position in the queue",
+        "operationId": "jobsInFront",
+        "produces": [
+          "application/json"
+        ],
+        "tags": [
+          "job"
+        ],
+        "security": [
+          {
+            "api_key": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID of job to check queue position",
+            "required": true,
+            "type": "integer",
+            "format": "int64"
+          }
+        ]
+      }
+    },
+    "/job_callback_url": {
+      "patch": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "404": {
+            "description": "not found",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "$ref": "#/definitions/Job"
+            }
+          }
+        },
+        "summary": "Update job callback url",
+        "description": "This is to demonstrate what a callback PATCH request from Studio to your application would look like, complete with a sample response body.",
+        "operationId": "updateJobCallbackUrl",
+        "produces": [
+          "application/json"
+        ],
+        "tags": [
+          "job"
+        ]
+      }
+    },
+    "/jobs/find_by_name": {
+      "get": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "404": {
+            "description": "not found",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "$ref": "#/definitions/Job"
+            }
+          }
+        },
+        "summary": "Find job by name",
+        "description": "Returns a single job",
+        "operationId": "getJobByName",
+        "tags": [
+          "job"
+        ],
+        "security": [
+          {
+            "api_key": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "body",
+            "description": "Name of job to fetch",
+            "required": true,
+            "type": "string",
+            "schema": {
+              "$ref": "#/definitions/JobByNameParams"
+            }
+          }
+        ]
+      }
+    },
+    "/photos": {
+      "post": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "422": {
+            "description": "unprocessible entity",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "201": {
+            "description": "created",
+            "schema": {
+              "$ref": "#/definitions/Photo"
+            }
+          }
+        },
+        "summary": "Create a photo",
+        "description": "Creates a photo",
+        "operationId": "createPhoto",
+        "produces": [
+          "application/json"
+        ],
+        "tags": [
+          "photo"
+        ],
+        "security": [
+          {
+            "api_key": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "photo",
+            "in": "body",
+            "description": "Photo to create",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/PhotoParams"
+            }
+          }
+        ]
+      }
+    },
+    "/photos/{id}": {
+      "get": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "404": {
+            "description": "not found",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "$ref": "#/definitions/Photo"
+            }
+          }
+        },
+        "summary": "Find photo by ID",
+        "description": "Returns a single photo",
+        "operationId": "getPhotoById",
+        "tags": [
+          "photo"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID of photo to fetch",
+            "required": true,
+            "type": "integer",
+            "format": "int64"
+          }
+        ]
+      },
+      "delete": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "404": {
+            "description": "not found",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "422": {
+            "description": "unprocessible entity",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "$ref": "#/definitions/Photo"
+            }
+          }
+        },
+        "summary": "Delete photo by ID",
+        "description": "Deletes a photo",
+        "operationId": "deletePhotoById",
+        "tags": [
+          "photo"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID of photo to delete",
+            "required": true,
+            "type": "integer",
+            "format": "int64"
+          }
+        ]
+      }
+    },
+    "/photos/upload_url": {
+      "get": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "404": {
+            "description": "not found",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "422": {
+            "description": "unprocessible entity",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "$ref": "#/definitions/PhotoUploadUrl"
+            }
+          }
+        },
+        "summary": "Photo upload url",
+        "description": "Generates an AWS S3 put object presigned url for photo upload.\n          You must make a separate PUT request to the url returned from this endpoint in order to upload your photo.\n          [Please refer to the Direct Upload Method in the Photo Upload Process section.](http://studio-docs.skylabtech.ai/#section/Important-Notes/Photo-Upload-Process)",
+        "operationId": "photoUploadUrl",
+        "produces": [
+          "application/json"
+        ],
+        "tags": [
+          "photo"
+        ],
+        "parameters": [
+          {
+            "name": "type",
+            "in": "body",
+            "description": "the image file type",
+            "default": "jpg",
+            "schema": {
+              "$ref": "#/definitions/PhotoUploadUrlParams"
+            }
+          }
+        ]
+      }
+    },
+    "/photos/list_for_job": {
+      "get": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "422": {
+            "description": "unprocessible entity",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Photo"
+              }
+            }
+          }
+        },
+        "summary": "List all photos for a job",
+        "description": "Returns all photos for a given job",
+        "operationId": "listPhotosForJob",
+        "produces": [
+          "application/json"
+        ],
+        "tags": [
+          "photo"
+        ],
+        "security": [
+          {
+            "api_key": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "photo",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/PhotosListForJobParams"
+            }
+          }
+        ]
+      }
+    },
+    "/profiles": {
+      "get": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Profile"
+              }
+            }
+          }
+        },
+        "summary": "List all profiles",
+        "description": "Returns all profiles",
+        "operationId": "listProfiles",
+        "produces": [
+          "application/json"
+        ],
+        "tags": [
+          "profile"
+        ],
+        "security": [
+          {
+            "api_key": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/parameters/page"
+          }
+        ]
+      },
+      "post": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "422": {
+            "description": "unprocessible entity",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "201": {
+            "description": "created",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Profile"
+              }
+            }
+          }
+        },
+        "summary": "Create a profile",
+        "description": "Creates a profile",
+        "operationId": "createProfile",
+        "produces": [
+          "application/json"
+        ],
+        "tags": [
+          "profile"
+        ],
+        "security": [
+          {
+            "api_key": [
+
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "name": "profile",
+            "in": "body",
+            "description": "Profile to create",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ProfileParams"
+            }
+          }
+        ]
+      }
+    },
+    "/profiles/{id}": {
+      "get": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "404": {
+            "description": "not found",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "$ref": "#/definitions/Profile"
+            }
+          }
+        },
+        "summary": "Find profile by ID",
+        "description": "Returns a single profile",
+        "operationId": "getProfileById",
+        "tags": [
+          "profile"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID of profile to fetch",
+            "required": true,
+            "type": "integer",
+            "format": "int64"
+          }
+        ]
+      },
+      "patch": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "404": {
+            "description": "not found",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "422": {
+            "description": "unprocessible entity",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "$ref": "#/definitions/Profile"
+            }
+          }
+        },
+        "summary": "Update profile by ID",
+        "description": "Updates a profile",
+        "operationId": "updateProfileById",
+        "tags": [
+          "profile"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID of profile to update",
+            "required": true,
+            "type": "integer",
+            "format": "int64"
+          },
+          {
+            "name": "profile",
+            "in": "body",
+            "description": "Profile to update",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ProfileParams"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "responses": {
+          "401": {
+            "description": "not authorized",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "403": {
+            "description": "forbidden",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "404": {
+            "description": "not found",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "422": {
+            "description": "unprocessible entity",
+            "schema": {
+              "$ref": "#/definitions/Error"
+            }
+          },
+          "200": {
+            "description": "success",
+            "schema": {
+              "$ref": "#/definitions/Profile"
+            }
+          }
+        },
+        "summary": "Delete profile by ID",
+        "description": "Deletes a profile",
+        "operationId": "deleteProfileById",
+        "tags": [
+          "profile"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID of profile to delete",
+            "required": true,
+            "type": "integer",
+            "format": "int64"
+          }
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "Error": {
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "errors": {
+          "properties": {
+            "model_name": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "JobParams": {
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "profile_id": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Required, if type is regular"
+        },
+        "preset_type": {
+          "type": "string",
+          "description": "Required, if type is training"
+        },
+        "type": {
+          "default": "regular",
+          "type": "string",
+          "enum": [
+            "regular",
+            "training"
+          ]
+        }
+      }
+    },
+    "JobByNameParams": {
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "Job": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/JobOnly"
+        },
+        {
+          "properties": {
+            "photos": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/PhotoOnly"
+              }
+            },
+            "profile": {
+              "$ref": "#/definitions/ProfileOnly"
+            }
+          }
+        }
+      ]
+    },
+    "JobOnly": {
+      "required": [
+        "id",
+        "accountId",
+        "name",
+        "state"
+      ],
+      "properties": {
+        "accountId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "id": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "name": {
+          "type": "string"
+        },
+        "profileId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "state": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "submittedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "presetType": {
+          "type": "string",
+          "description": "Only has a value if type is training"
+        },
+        "type": {
+          "default": "regular",
+          "type": "string",
+          "enum": [
+            "regular",
+            "training"
+          ]
+        },
+        "outputLog": {
+          "type": "string"
+        },
+        "expiryDate": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "photoDownloadUrls": {
+          "type": "object",
+          "properties": {
+            "image_name_1": {
+              "type": "string",
+              "format": "uri",
+              "description": "A get-object presigned URL",
+              "example": "https://<bucket_name>.s3.<region>.amazonaws.com/<file_path>?X-Amz-Algorithm=<algorithm>&X-Amz-Credential=<credential>&X-Amz-Date=<date>&X-Amz-Expires=<expires>&X-Amz-SignedHeaders=<header>&X-Amz-Signature=<signature>"
+            },
+            "image_name_2": {
+              "type": "string",
+              "format": "uri",
+              "description": "A get-object presigned URL",
+              "example": "https://<bucket_name>.s3.<region>.amazonaws.com/<file_path>?X-Amz-Algorithm=<algorithm>&X-Amz-Credential=<credential>&X-Amz-Date=<date>&X-Amz-Expires=<expires>&X-Amz-SignedHeaders=<header>&X-Amz-Signature=<signature>"
+            },
+            "image_name_3": {
+              "type": "string",
+              "format": "uri",
+              "description": "A get-object presigned URL",
+              "example": "https://<bucket_name>.s3.<region>.amazonaws.com/<file_path>?X-Amz-Algorithm=<algorithm>&X-Amz-Credential=<credential>&X-Amz-Date=<date>&X-Amz-Expires=<expires>&X-Amz-SignedHeaders=<header>&X-Amz-Signature=<signature>"
+            }
+          }
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "A string error message",
+            "example": [
+              "Missing photos: sample-1.jpg, sample-2.jpg",
+              "Procesing errors: Cannot access /cloud/path/to/input/image.jpg"
+            ]
+          }
+        },
+        "creditAmountPerPhoto": {
+          "type": "float",
+          "description": "The credit amount cost per photo for this particular job's selected feature combination. (only returned for prepay accounts)",
+          "example": 1.5
+        },
+        "dollarAmountPerPhoto": {
+          "type": "float",
+          "description": "The dollar amount cost per photo for this particular job's selected feature combination. (only returned for contract accounts)",
+          "example": 2.5
+        },
+        "processed": {
+          "type": "object",
+          "description": "Only returned if the job has been processed. This object contains the processed data how many photos were processed for a particular feature along with the total number of photos processed for the job.",
+          "default": {
+            "color": 1,
+            "crop": 1,
+            "retouch": 1,
+            "eretouch": 1,
+            "extract": 1,
+            "teeth": 1,
+            "glare": 1,
+            "glare_combo": 1,
+            "braces": 1,
+            "denoise": 1,
+            "retouch_full_body": 1,
+            "eretouch_full_body": 1,
+            "total": 1
+          }
+        }
+      }
+    },
+    "JobsInFront": {
+      "properties": {
+        "jobsInFront": {
+          "type": "integer",
+          "description": "The number of jobs in front of this job in the queue. When this number is 0 or -1 that means the job is currently processing/has been processed.",
+          "example": 5,
+          "minimum": -1
+        },
+        "message": {
+          "type": "string",
+          "description": "A message that displays when the job is currently not queued. Please refer to the example for the different possible messages depending on the job state. ",
+          "example": "Pending - Job is currently in pending state. A photo checking process is currently running and your job will be queued shortly. Processing - No jobs in front, job is currently processing. Complete - Job has been completed."
+        }
+      }
+    },
+    "PhotoParams": {
+      "required": [
+        "name",
+        "key"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "format": "uuid",
+          "description": "The value of the key field returned from the photos/upload_url endpoint. This is only required if using the cache photo upload flow for regular processing jobs. (legacy - not recommended)"
+        },
+        "job_id": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Required, if profile_id is not set"
+        },
+        "profile_id": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Required, if job_id is not set"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "PhotoOnly": {
+      "required": [
+        "id",
+        "image_data"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "jobId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "coreJobId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string",
+          "default": "path/to/photo.jpg"
+        },
+        "thumbnailKey": {
+          "type": "string",
+          "format": "uri",
+          "default": "jobs/<job_id>/<core_job_id>/thumbs/<photo_name>"
+        },
+        "imageData": {
+          "type": "object",
+          "default": {
+            "id": "sample.jpg",
+            "storage": "store",
+            "metadata": {
+              "cropParams": {
+                "x1": 0,
+                "y1": 0,
+                "x2": 0,
+                "y2": 0
+              },
+              "colorParams": {
+                "colorPresetName": {
+                  "red": 0,
+                  "green": 0,
+                  "blue": 0,
+                  "density": 0,
+                  "contrast": 0,
+                  "gamma": 0.0,
+                  "saturation": 0,
+                  "shadowContrast": 0,
+                  "midtoneContrast": 0,
+                  "highlightContrast": 0
+                }
+              },
+              "size": 102836,
+              "filename": "sample.jpg",
+              "mimeType": "image/jpeg",
+              "cachePath": "cache/sample.jpg",
+              "processSize": "2400x3000"
+            }
+          }
+        },
+        "originalUrl": {
+          "type": "string",
+          "format": "uri",
+          "default": "https://<bucket_name>.s3.<region>.amazonaws.com/<file_path>?X-Amz-Algorithm=<algorithm>&X-Amz-Credential=<credential>&X-Amz-Date=<date>&X-Amz-Expires=<expires>&X-Amz-SignedHeaders=<header>&X-Amz-Signature=<signature>"
+        },
+        "retouchedUrl": {
+          "type": "string",
+          "format": "uri",
+          "default": "Please note: the retouched URL is only returned when the job belonging to the image has been processed"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "Photo": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/PhotoOnly"
+        },
+        {
+          "properties": {
+            "job": {
+              "$ref": "#/definitions/JobOnly"
+            }
+          }
+        }
+      ]
+    },
+    "PhotoUploadUrlParams": {
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Your image file type. Accepted values: jpg, jpeg, png. Only required when using the cache photo upload flow. (legacy - not recommended)",
+          "default": "jpg"
+        },
+        "photo_id": {
+          "type": "integer",
+          "format": "int64",
+          "description": "Required, if using the direct store photo upload flow."
+        },
+        "use_cache_upload": {
+          "type": "boolean",
+          "description": "Explicitly set to false to use the direct store photo upload flow will be used. (recommended). Defaults to true which uses the cache photo upload process (legacy - not recommended) if not provided",
+          "default": true
+        }
+      }
+    },
+    "PhotoUploadUrl": {
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "default": "https://<bucket_name>.s3.<region>.amazonaws.com/<file_path>?X-Amz-Algorithm=<algorithm>&X-Amz-Credential=<credential>&X-Amz-Date=<date>&X-Amz-Expires=<expires>&X-Amz-SignedHeaders=<header>&X-Amz-Signature=<signature>"
+        },
+        "key": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "PhotosListForJobParams": {
+      "properties": {
+        "job_id": {
+          "type": [
+            "integer",
+            "string"
+          ],
+          "description": "This field is required if no job_name is provided. Has priority over job_name (if both provided)."
+        },
+        "job_name": {
+          "type": "string",
+          "description": "This field is required if no job_id is provided. Priroity given to job_id (if both provided)."
+        }
+      }
+    },
+    "ProfileParams": {
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string",
+          "description": "A short description of the profile"
+        },
+        "enable_color": {
+          "type": "boolean",
+          "description": "Enable/Disable the color service",
+          "default": true
+        },
+        "color_red": {
+          "type": "integer",
+          "description": "This field depicts the amount of red to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -40,
+          "maximum": 40
+        },
+        "color_green": {
+          "type": "integer",
+          "description": "This field depicts the amount of green to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -40,
+          "maximum": 40
+        },
+        "color_blue": {
+          "type": "integer",
+          "description": "This field depicts the amount of blue to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -40,
+          "maximum": 40
+        },
+        "color_gamma": {
+          "type": "float",
+          "description": "This field depicts the amount of gamma to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0.0,
+          "minimum": -0.5,
+          "maximum": 0.5,
+          "precision": 1,
+          "scale": 2
+        },
+        "color_contrast": {
+          "type": "integer",
+          "description": "This field depicts the amount of color contrast to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -40,
+          "maximum": 40
+        },
+        "color_midtone_contrast": {
+          "type": "integer",
+          "description": "This field depicts the amount of contrast to the middle gray tones to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -20,
+          "maximum": 20
+        },
+        "color_shadow_contrast": {
+          "type": "integer",
+          "description": "This field depicts the amount of contrast of the shadows to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -20,
+          "maximum": 20
+        },
+        "color_highlight_contrast": {
+          "type": "integer",
+          "description": "This field depicts the amount of contrast of the highlights to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -20,
+          "maximum": 20
+        },
+        "color_density": {
+          "type": "integer",
+          "description": "This field depicts the amount of color density to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -40,
+          "maximum": 40
+        },
+        "color_preset": {
+          "type": "string",
+          "description": "The color preset that you would like this profile to use, defaults to skylab. This field has no effect unless enable_color is set to true.",
+          "default": "skylab"
+        },
+        "color_saturation": {
+          "type": "integer",
+          "description": "This field depicts the amount of color intensity to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -50,
+          "maximum": 50
+        },
+        "enable_crop": {
+          "type": "boolean",
+          "description": "Enable/Disable the crop service",
+          "default": true
+        },
+        "enable_head_top": {
+          "type": "boolean",
+          "description": "Enable/Disable the head top crop (crop plus) option. Leaves extra top margin to ensure the entire face and head of subjects with voluminous hairstyles or large hats/headpieces is included in the cropped output image. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access and/or whether enable_crop is set to true.__",
+          "default": false
+        },
+        "head_top_margin": {
+          "type": "number",
+          "description": "Value is representative of a margin percentage (i.e. 0.02 is 2%) from the top of the head to the top of the crop. __Please note: this field is only applicable if enable_crop and enable_head_top is set to true.__",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "crop_position_x": {
+          "type": "integer",
+          "description": "Required, if enable_crop is set to true. This field depicts the desired horizontal position of the crop box."
+        },
+        "crop_position_y": {
+          "type": "integer",
+          "description": "Required, if enable_crop is set to true. This field depicts the desired vertical position of the crop box."
+        },
+        "crop_scale": {
+          "description": "Required, if enable_crop is set to true. This field depicts the scale of the crop box. (i.e. bigger/more zoomed in or smaller/more zoomed out)",
+          "minimum": 0
+        },
+        "crop_size_x": {
+          "type": "integer",
+          "description": "Required, if enable_crop is set to true. This field depicts the desired output image width in pixels. Crop Size X and Crop Size Y cannot be more than 27 megapixels.",
+          "minimum": 0,
+          "maximum": 6400
+        },
+        "crop_size_y": {
+          "description": "Required, if enable_crop is set to true. This field depicts the desired output image height in pixels. Crop Size X and Crop Size Y cannot be more than 27 megapixels.",
+          "minimum": 0,
+          "maximum": 6400
+        },
+        "enable_retouch": {
+          "type": "boolean",
+          "description": "Enable/Disable the retouch service. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        },
+        "enable_retouch_full_body": {
+          "type": "boolean",
+          "description": "Enable/Disable the full body retouch service option. This retouch option expands our retouching services to all of a subject's exposed skin. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access and/or whether enable_retouch is set to true.__",
+          "default": false
+        },
+        "retouch_preset": {
+          "type": "string",
+          "description": "The retouch preset that you would like this profile to use, defaults to default",
+          "default": "default"
+        },
+        "enable_extract": {
+          "type": "boolean",
+          "description": "Enable/Disable the extract service. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        },
+        "remove_spill": {
+          "type": "boolean",
+          "description": "Enable/Disable the remove spill extraction option. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access and/or whether enable_extract is set to true.__",
+          "default": false
+        },
+        "turbo_spill": {
+          "type": "boolean",
+          "description": "Enable/Disable the turbo spill extraction option. Only enable this field if you are still experiencing color spill on your extraction results with remove_spill already enabled. May have unintended side effects. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access and/or whether both enable_extract and remove_spill are set to true.__",
+          "default": false
+        },
+        "replace_background": {
+          "type": "boolean",
+          "description": "Enable/Disable the replace background extraction option. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access and/or whether enable_extract is set to true. This extraction option is only available to jobs processed on the Studio Desktop application.__",
+          "default": false
+        },
+        "dual_file_output": {
+          "type": "boolean",
+          "description": "Specifies whether to output an additional output image in additional to the default PNG extracted image.  __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access and/or whether enable_extract and replace background is set to true. This extraction option is only available to jobs processed on the Studio Desktop application.__",
+          "default": false
+        },
+        "output_file_type": {
+          "type": "string",
+          "description": "Specifies the output image file type. JPG output is only available when replace_background is set to true. PSD output is only available when remove_spill is set to false. When enable_extract, replace_background and dual_file_output are all set to true, the only possible values are JPG or PSD. (PSD output is only available if remove_spill is set to fale). DP2 JPG output is only available when both enable_crop and replace_background is set to false.  __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access and/or whether enable_extract is set to true. This extraction option is only available to jobs processed on the Studio Desktop application.__",
+          "default": "png",
+          "enum": [
+            "png",
+            "jpg",
+            "psd",
+            "dp2_jpg"
+          ]
+        },
+        "enable_teeth": {
+          "type": "boolean",
+          "description": "Enable/Disable the teeth whitening service. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        },
+        "enable_glare": {
+          "type": "boolean",
+          "description": "Enable/Disable the glasses glare removal service. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        },
+        "enable_glare_combo": {
+          "type": "boolean",
+          "description": "Enable/Disable the glasses glare removal service with glare detect. When enabled, we will run the glare detector process at no additional cost. In the event that glare is detected in an image, glare removal will be run for a fee. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        },
+        "enable_braces": {
+          "type": "boolean",
+          "description": "__Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        },
+        "print_crop_params": {
+          "type": "boolean",
+          "description": "Print cropping window information in the message defaults to false",
+          "default": false
+        },
+        "print_color_params": {
+          "type": "boolean",
+          "description": "Print color information in the message defaults to false",
+          "default": false
+        },
+        "enable_no_image_output": {
+          "type": "boolean",
+          "description": "Enable/Disable Skylab returning output images. __When disabled, Skylab will not generate and return output images. This setting is particularly useful when only the color and/or crop parameters are of interest and will speed up job processing when enabled.__",
+          "default": false
+        },
+        "enable_strip_png_metadata": {
+          "type": "boolean",
+          "description": "Enable/Disable strip PNG metadata. __When enabled, this deletes/strips all input image metadata from the PNG output image.__",
+          "default": false
+        },
+        "enable_srgb_output": {
+          "type": "boolean",
+          "description": "Enable/Disable sRGB output. __When enabled, this converts all output images to sRGB color space.__",
+          "default": false
+        },
+        "enable_qr_code_parse": {
+          "type": "boolean",
+          "description": "Enable/Disable the QR code parsing service. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        },
+        "exif_keys": {
+          "type": "array",
+          "description": "List of keys (strings) to be read off a QR code and added to metadata. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        }
+      }
+    },
+    "Profile": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/ProfileOnly"
+        },
+        {
+          "properties": {
+            "photos": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/PhotoOnly"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ProfileOnly": {
+      "required": [
+        "id",
+        "account_id"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "accountId": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "colorRed": {
+          "type": "integer",
+          "description": "This field depicts the amount of red to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -40,
+          "maximum": 40
+        },
+        "colorGreen": {
+          "type": "integer",
+          "description": "This field depicts the amount of green to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -40,
+          "maximum": 40
+        },
+        "colorBlue": {
+          "type": "integer",
+          "description": "This field depicts the amount of blue to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -40,
+          "maximum": 40
+        },
+        "colorSaturation": {
+          "type": "integer",
+          "description": "This field depicts the amount of color intensity to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -50,
+          "maximum": 50
+        },
+        "colorContrast": {
+          "type": "integer",
+          "description": "This field depicts the amount of color contrast to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -40,
+          "maximum": 40
+        },
+        "colorHighlightContrast": {
+          "type": "integer",
+          "description": "This field depicts the amount of contrast of the highlights to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -20,
+          "maximum": 20
+        },
+        "colorShadowContrast": {
+          "type": "integer",
+          "description": "This field depicts the amount of contrast of the shadows to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -20,
+          "maximum": 20
+        },
+        "colorMidtoneContrast": {
+          "type": "integer",
+          "description": "This field depicts the amount of contrast to the middle gray tones to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -20,
+          "maximum": 20
+        },
+        "colorDensity": {
+          "type": "integer",
+          "description": "This field depicts the amount of color density to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0,
+          "minimum": -40,
+          "maximum": 40
+        },
+        "colorGamma": {
+          "type": "float",
+          "description": "This field depicts the amount of gamma to be added/subtracted from the output image. This field has no effect unless enable_color is set to true.",
+          "default": 0.0,
+          "minimum": -0.5,
+          "maximum": 0.5,
+          "precision": 1,
+          "scale": 2
+        },
+        "colorPreset": {
+          "type": "string",
+          "description": "The color preset that you would like this profile to use, defaults to skylab. This field has no effect unless enable_color is set to true.",
+          "default": "skylab"
+        },
+        "cropPositionX": {
+          "type": "integer",
+          "description": "Required, if enable_crop is set to true. This field depicts the desired horizontal position of the crop box."
+        },
+        "cropPositionY": {
+          "type": "integer",
+          "description": "Required, if enable_crop is set to true. This field depicts the desired vertical position of the crop box."
+        },
+        "cropScale": {
+          "description": "Required, if enable_crop is set to true. This field depicts the scale of the crop box. (i.e. bigger/more zoomed in or smaller/more zoomed out)",
+          "minimum": 0
+        },
+        "cropSizeX": {
+          "type": "integer",
+          "description": "Required, if enable_crop is set to true. This field depicts the desired output image width in pixels. Crop Size X and Crop Size Y cannot be more than 27 megapixels.",
+          "minimum": 0,
+          "maximum": 6400
+        },
+        "cropSizeY": {
+          "description": "Required, if enable_crop is set to true. This field depicts the desired output image height in pixels. Crop Size X and Crop Size Y cannot be more than 27 megapixels.",
+          "minimum": 0,
+          "maximum": 6400
+        },
+        "enableColor": {
+          "type": "boolean",
+          "description": "Enable/Disable the color service",
+          "default": true
+        },
+        "enableCrop": {
+          "type": "boolean",
+          "description": "Enable/Disable the crop service",
+          "default": true
+        },
+        "enableGlobalColorAdjustments": {
+          "type": "boolean"
+        },
+        "printColorParams": {
+          "type": "boolean",
+          "description": "Print color information in the message defaults to false",
+          "default": false
+        },
+        "printCropParams": {
+          "type": "boolean",
+          "description": "Print cropping window information in the message defaults to false",
+          "default": false
+        },
+        "enable_no_image_output": {
+          "type": "boolean",
+          "description": "Enable/Disable Skylab returning output images. __When disabled, Skylab will not generate and return output images. This setting is particularly useful when only the color and/or crop parameters are of interest and will speed up job processing when enabled.__",
+          "default": false
+        },
+        "enable_strip_png_metadata": {
+          "type": "boolean",
+          "description": "Enable/Disable strip PNG metadata. __When enabled, this deletes/strips all input image metadata from the PNG output image.__",
+          "default": false
+        },
+        "enable_srgb_output": {
+          "type": "boolean",
+          "description": "Enable/Disable sRGB output. __When enabled, this converts all output images to sRGB color space.__",
+          "default": false
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "enableRetouch": {
+          "type": "boolean",
+          "description": "Enable/Disable the retouch service. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        },
+        "enableRetouchFullBody": {
+          "type": "boolean",
+          "description": "Enable/Disable the full body retouch service option. This retouch option expands our retouching services to all of a subject's exposed skin. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access and/or whether enable_retouch is set to true.__",
+          "default": false
+        },
+        "enableEnhancedRetouch": {
+          "type": "boolean",
+          "description": "Enable/Disable the enhanced retouch service. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        },
+        "retouchPreset": {
+          "type": "string",
+          "description": "The retouch preset that you would like this profile to use, defaults to default",
+          "default": "default"
+        },
+        "enableExtract": {
+          "type": "boolean",
+          "description": "Enable/Disable the extract service. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        },
+        "removeSpill": {
+          "type": "boolean",
+          "description": "Enable/Disable the remove spill extraction option. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access and/or whether enable_extract is set to true.__",
+          "default": false
+        },
+        "turboSpill": {
+          "type": "boolean",
+          "description": "Enable/Disable the turbo spill extraction option. Only enable this field if you are still experiencing color spill on your extraction results with remove_spill already enabled. May have unintended side effects. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access and/or whether both enable_extract and remove_spill are set to true.__",
+          "default": false
+        },
+        "replaceBackground": {
+          "type": "boolean",
+          "description": "Enable/Disable the replace background extraction option. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access and/or whether enable_extract is set to true. This extraction option is only available to jobs processed on the Studio Desktop application.__",
+          "default": false
+        },
+        "dualFileOutput": {
+          "type": "boolean",
+          "description": "Specifies whether to output an additional output image in additional to the default PNG extracted image.  __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access and/or whether enable_extract and replace background is set to true. This extraction option is only available to jobs processed on the Studio Desktop application.__",
+          "default": false
+        },
+        "outputFileType": {
+          "type": "string",
+          "description": "Specifies the output image file type. JPG output is only available when replace_background is set to true. PSD output is only available when remove_spill is set to false. When enable_extract, replace_background and dual_file_output are all set to true, the only possible values are JPG or PSD. (PSD output is only available if remove_spill is set to fale) DP2 JPG output is only available when both enable_crop and replace_background is set to false. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access and/or whether enable_extract is set to true. This extraction option is only available to jobs processed on the Studio Desktop application.__",
+          "default": "png",
+          "enum": [
+            "png",
+            "jpg",
+            "psd",
+            "dp2_jpg"
+          ]
+        },
+        "enableTeeth": {
+          "type": "boolean",
+          "description": "Enable/Disable the teeth whitening service. __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        },
+        "enableGlare": {
+          "type": "boolean",
+          "description": "Enable/Disable the glasses glare removal service. (BETA) __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        },
+        "enableGlareCombo": {
+          "type": "boolean",
+          "description": "Enable/Disable the glasses glare removal detection option. This will run an automated glare detection process on every image to detect whether there is glasses glare on the subject's glasses. You will not be charged if there is no glare detected and charged an amount when there is glare detected. (BETA) __Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        },
+        "enableBraces": {
+          "type": "boolean",
+          "description": "__Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        },
+        "enableProof": {
+          "type": "boolean",
+          "description": "__Please note: this field may or may not be editable or visible to you depending on which services your account has been permitted to access.__",
+          "default": false
+        }
+      }
+    }
+  }
+}
