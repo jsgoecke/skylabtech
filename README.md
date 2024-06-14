@@ -35,7 +35,7 @@ go mod init my-skylabtech-app
 // go.mod
 module my-skylabtech-app
 
-go 1.16
+go 1.22
 
 require github.com/jsgoecke/skylabtech latest
 ```
